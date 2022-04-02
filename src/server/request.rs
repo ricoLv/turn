@@ -35,7 +35,7 @@ use std::marker::{Send, Sync};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::SystemTime;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tokio::time::{Duration, Instant};
 
 use md5::{Digest, Md5};
@@ -259,7 +259,7 @@ impl Request {
     }
 
     pub(crate) async fn handle_binding_request(&mut self, m: &Message) -> Result<()> {
-        log::debug!("received BindingRequest from {}", self.src_addr);
+        log::info!("received BindingRequest from {}", self.src_addr);
 
         let (ip, port) = (self.src_addr.ip(), self.src_addr.port());
 
@@ -275,9 +275,10 @@ impl Request {
         build_and_send(&self.conn, self.src_addr, msg).await
     }
 
+    // FIX: patch: https://github.com/pion/turn/pull/243
     // // https://tools.ietf.org/html/rfc5766#section-6.2
     pub(crate) async fn handle_allocate_request(&mut self, m: &Message) -> Result<()> {
-        log::debug!("received AllocateRequest from {}", self.src_addr);
+        log::info!("received AllocateRequest from {}", self.src_addr);
 
         // 1. The server MUST require that the request be authenticated.  This
         //    authentication MUST be done using the long-term credential
@@ -303,28 +304,38 @@ impl Request {
         // 2. The server checks if the 5-tuple is currently in use by an
         //    existing allocation.  If yes, the server rejects the request with
         //    a 437 (Allocation Mismatch) error.
-        if self
-            .allocation_manager
-            .get_allocation(&five_tuple)
-            .await
-            .is_some()
-        {
-            let msg = build_msg(
-                m.transaction_id,
-                MessageType::new(METHOD_ALLOCATE, CLASS_ERROR_RESPONSE),
-                vec![Box::new(ErrorCodeAttribute {
-                    code: CODE_ALLOC_MISMATCH,
-                    reason: vec![],
-                })],
-            )?;
-            return build_and_send_err(
-                &self.conn,
-                self.src_addr,
-                msg,
-                Error::ErrRelayAlreadyAllocatedForFiveTuple,
-            )
-            .await;
-        }
+        if let Some(allocate) = self
+        .allocation_manager
+        .get_allocation(&five_tuple)
+        .await {
+            if let Some((id,attrs)) = allocate.lock().await.get_response_cache(){
+                if id != m.transaction_id {
+                    let msg = build_msg(
+                        m.transaction_id,
+                        MessageType::new(METHOD_ALLOCATE, CLASS_ERROR_RESPONSE),
+                        vec![Box::new(ErrorCodeAttribute {
+                            code: CODE_ALLOC_MISMATCH,
+                            reason: vec![],
+                        })],
+                    )?;
+                    return build_and_send_err(
+                        &self.conn,
+                        self.src_addr,
+                        msg,
+                        Error::ErrRelayAlreadyAllocatedForFiveTuple,
+                    )
+                    .await;
+                }
+                let resp_attr = attrs.read().await;
+                
+                let msg = build_msg(
+                    m.transaction_id,
+                    MessageType::new(METHOD_ALLOCATE, CLASS_SUCCESS_RESPONSE),
+                    (*resp_attr).clone(),
+                )?;
+                return build_and_send(&self.conn, self.src_addr, msg).await;
+            };
+        };
 
         // 3. The server checks if the request contains a REQUESTED-TRANSPORT
         //    attribute.  If the REQUESTED-TRANSPORT attribute is not included
@@ -540,6 +551,9 @@ impl Request {
             }
 
             response_attrs.push(Box::new(message_integrity));
+            
+            a.lock().await.set_response_cache(m.transaction_id,Arc::new(RwLock::new(response_attrs.clone())));
+
             build_msg(
                 m.transaction_id,
                 MessageType::new(METHOD_ALLOCATE, CLASS_SUCCESS_RESPONSE),

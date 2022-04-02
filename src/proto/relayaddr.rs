@@ -13,7 +13,7 @@ use stun::xoraddr::*;
 // client. It is encoded in the same way as XOR-MAPPED-ADDRESS.
 //
 // RFC 5766 Section 14.5
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct RelayedAddress {
     pub ip: IpAddr,
     pub port: u16,

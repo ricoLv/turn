@@ -13,7 +13,7 @@ pub const REQUESTED_FAMILY_IPV6: RequestedAddressFamily = RequestedAddressFamily
 
 // RequestedAddressFamily represents the REQUESTED-ADDRESS-FAMILY Attribute as
 // defined in RFC 6156 Section 4.1.1.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq,Clone)]
 pub struct RequestedAddressFamily(pub u8);
 
 impl fmt::Display for RequestedAddressFamily {

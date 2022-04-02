@@ -21,12 +21,20 @@ use std::collections::HashMap;
 use std::marker::{Send, Sync};
 use std::net::SocketAddr;
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::time::{Duration, Instant};
+
+// FIX: patch: https://github.com/pion/turn/pull/243
+use state::Storage;
 
 const RTP_MTU: usize = 1500;
 
 pub type AllocationMap = Arc<Mutex<HashMap<String, Arc<Mutex<Allocation>>>>>;
+
+pub struct AllocationResponse {
+	transaction_id: TransactionId,
+	response_atrrs: Arc<RwLock<Vec<Box<dyn Setter>>>>,
+}
 
 // Allocation is tied to a FiveTuple and relays traffic
 // use create_allocation and get_allocation to operate
@@ -42,6 +50,8 @@ pub struct Allocation {
     reset_tx: Option<mpsc::Sender<Duration>>,
     timer_expired: Arc<AtomicBool>,
     closed: bool, // Option<mpsc::Receiver<()>>,
+
+    response_cache: Storage<AllocationResponse>
 }
 
 fn addr2ipfingerprint(addr: &SocketAddr) -> String {
@@ -68,7 +78,22 @@ impl Allocation {
             reset_tx: None,
             timer_expired: Arc::new(AtomicBool::new(false)),
             closed: false,
+
+            response_cache: Storage::new(),
         }
+    }
+
+    pub fn set_response_cache(&self,transaction_id: TransactionId,response_atrrs:Arc<RwLock<Vec<Box<dyn Setter >>>>) {
+        self.response_cache.set(AllocationResponse{
+            transaction_id,
+            response_atrrs
+        });
+    }
+
+    pub fn get_response_cache(&self) -> Option<(TransactionId,Arc<RwLock<Vec<Box<dyn Setter>>>>)> {
+        if let Some(cache_value) = self.response_cache.try_get() {
+            Some((cache_value.transaction_id,cache_value.response_atrrs.clone()))
+        }else { None }
     }
 
     // has_permission gets the Permission from the allocation
@@ -299,7 +324,7 @@ impl Allocation {
                     }
                 };
 
-                log::debug!(
+                log::info!(
                     "relay socket {:?} received {} bytes from {}",
                     relay_socket.local_addr().await,
                     n,

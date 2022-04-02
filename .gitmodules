@@ -1,0 +1,6 @@
+[submodule "stun"]
+	path = stun
+	url = git@github.com:ricoLv/stun.git
+[submodule "util"]
+	path = util
+	url = git@github.com:ricoLv/util.git

@@ -14,7 +14,7 @@ use stun::xoraddr::*;
 // transport address if the peer is behind a NAT.)
 //
 // RFC 5766 Section 14.3
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct PeerAddress {
     pub ip: IpAddr,
     pub port: u16,

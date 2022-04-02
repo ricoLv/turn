@@ -13,7 +13,7 @@ repository = "https://github.com/webrtc-rs/turn"
 
 [dependencies]
 util = { package = "webrtc-util", version = "0.5.3", default-features = false, features = ["conn", "vnet"] }
-stun = "0.4.2"
+stun = { version = "0.4.2" }
 tokio = { version = "1.15.0", features = ["full"] }
 async-trait = "0.1.52"
 log = "0.4.14"
@@ -22,6 +22,7 @@ rand = "0.8.4"
 ring = "0.16.20"
 md-5 = "0.10.0"
 thiserror = "1.0.30"
+state = "0.5.2"
 
 [dev-dependencies]
 tokio-test = "0.4.2"
@@ -44,3 +45,7 @@ bench = false
 name = "turn_server_udp"
 path = "examples/turn_server_udp.rs"
 bench = false
+
+[patch.crates-io]
+stun = { path = "./stun" }
+webrtc-util = { path = "./util" }
